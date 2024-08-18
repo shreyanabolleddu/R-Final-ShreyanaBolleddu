@@ -1,0 +1,124 @@
+---
+title: "Analyzing the Influence of GABA and Glutamate Levels on Neural Specificity in Glaucoma Patients"
+author: "Shreyana Bolleddu"
+date: "08/19/24"
+output:
+  slidy_presentation: default
+  ioslides_presentation: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+##EDIT THIS LATER
+
+library(tidyverse)
+library(gridExtra)
+library(ggplot2)
+library(ComplexHeatmap)
+library(ggsignif)
+
+
+```
+
+## Purpose and Background
+
+As glaucoma is the second leading cause of blindness and still not fully understood, research surrounding it could be greatly beneficial in finding effective treatments.
+Some studies show that glaucoma is associated with decreased levels of neurotransmitters, GABA and Glutamate, creating a potential target for these treatments. 
+
+This data set is pulled from a study that explored whether the amount of GABA and Glutamate in the visual cortex is affected by glaucoma. 
+If so, the study would further investigate what independent effects this may have on neural specificity (the brain's ability to respond to stimuli accurately).
+
+This study recruited 40 patients with glaucoma: 14 with early glaucoma and 26 with advanced glaucoma.
+A healthy group of 24 age-matched subjects was used as a control.
+
+The data set was obtained from the NYU Data Catalog (NYU Health Sciences Library).
+
+Link: https://datacatalog.med.nyu.edu/dataset/10631
+
+## REVISE THIS
+
+Using statistical analysis and data visualization, we should be able to see if there is a decrease in GABA and/or Glutamate, and its associations with neural specificity.
+
+For the purposes of this study, we are going to focus on the neurotransmitters in the visual cortex specifically.
+
+***
+
+## Import Data 
+
+Data was provided as an Microsoft Excel file. This was converted to a CSV file to be uploaded into RStudio.
+
+```{r}
+
+#Reading in the CSV file 
+glauc <- read.csv("https://raw.githubusercontent.com/shreyanabolleddu/R-Final-ShreyanaBolleddu/main/RFinalData.csv")
+
+#Display the first few rows of data to confirm proper import
+head(glauc)
+
+#Display summary to better understand data
+summary(glauc)
+
+```
+Table containing the demographic information, neurochemical profiles (GABA/Glutamate concentrations), and ophthalmic measures of the 64 subjects (40 experimental, 24 control) 
+
+
+***
+
+## Begin Data Exploration
+
+All values are currently being read as characters - we will adjust this as necessary.
+
+```{r}
+
+#Display summary to better understand data
+summary(glauc)
+
+```
+
+***
+
+## Continue Data Exploration and Cleaning
+
+We are going to focus on the neurochemical profiles, so we are gonna to create a subset of the relevant data.
+
+```{r}
+
+#Create a new data frame containing only the columns involving neurochemical profile information
+glaucNeurochem <- glauc[1:10]
+
+#Rename columns (column names were originally shifted to first row to help with formatting)
+colnames(glaucNeurochem) <- c("ID", "Age", "Gender", "Severity group", "Gaba/tCr", "Glutamate/tCr", "GABA/NAA", "Glutamate/NAA", "Neural specificity", "Gray matter volume of visual areas")
+
+#Remove the first row and reset row names
+glaucNeurochem <- glaucNeurochem[-1, ]
+row.names(glaucNeurochem) <- NULL
+head(glaucNeurochem)
+
+```
+
+***
+
+# Continue Data Cleaning and Refactor
+
+Some columns of the data need to be converted to numeric and relabeled. 
+
+We will also factorize some columns and handle the NA values.
+
+Overall, any changes that would make the data easier to be manipulated during statistical analysis will be perfomed.
+
+```{r}
+
+#Convert necessary columns to numeric (this step also handles the NAs by setting them the way we want)
+glaucNeurochem[,c(2,5:10)] <- lapply(glaucNeurochem[,c(2,5:10)], as.numeric)
+
+#Create factors for the Gender and Severity group columns
+glaucNeurochem$Gender<- factor(glaucNeurochem$Gender)
+glaucNeurochem$`Severity group`<- factor(glaucNeurochem$`Severity group`)
+
+#Check that data is organized
+summary(glaucNeurochem)
+
+```
+
+***
