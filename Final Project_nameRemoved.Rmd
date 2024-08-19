@@ -1,0 +1,481 @@
+---
+title: "Analyzing the Influence of GABA and Glutamate Levels on Neural Specificity in Glaucoma Patients"
+author: "Shreyana Bolleddu"
+date: "08/19/24"
+output:
+  slidy_presentation: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+
+library(tidyverse)
+library(ggplot2)
+
+
+```
+
+## Purpose and Background
+
+As glaucoma is the second leading cause of blindness and still not fully understood, research surrounding it could be greatly beneficial in finding effective treatments.
+Some studies show that glaucoma is associated with decreased levels of neurotransmitters, GABA and Glutamate, creating a potential target for these treatments. 
+
+This data set is pulled from a study that explored whether the amount of GABA and Glutamate in the visual cortex is affected by glaucoma. 
+If so, the study would further investigate what independent effects this may have on neural specificity (the brain's ability to respond to stimuli accurately).
+
+This study recruited 40 patients with glaucoma: 14 with early glaucoma and 26 with advanced glaucoma.
+A healthy group of 24 age-matched subjects was used as a control.
+
+The data set was obtained from the NYU Data Catalog (NYU Health Sciences Library).
+
+Link: https://datacatalog.med.nyu.edu/dataset/10631
+
+Using statistical analysis and data visualization, we should be able to see if there is a decrease in GABA and/or Glutamate, and its associations with neural specificity.
+
+For the purposes of this study, we are going to focus on the neurotransmitters in the visual cortex specifically.
+
+***
+
+
+
+## Import Data 
+
+Data was provided as an Microsoft Excel file. This was converted to a CSV file to be uploaded into RStudio.
+
+```{r}
+
+#Reading in the CSV file 
+glauc <- read.csv("https://raw.githubusercontent.com/shreyanabolleddu/R-Final-ShreyanaBolleddu/main/RFinalData.csv")
+
+#Display the first few rows of data to confirm proper import
+head(glauc)
+
+#Display summary to better understand data
+summary(glauc)
+
+```
+Table containing the demographic information, neurochemical profiles (GABA/Glutamate concentrations), and ophthalmic measures of the 64 subjects (40 experimental, 24 control) 
+
+***
+
+
+
+## Begin Data Exploration
+
+All values are currently being read as characters - we will adjust this as necessary.
+
+```{r}
+
+#Display summary to better understand data
+summary(glauc)
+
+```
+
+***
+
+
+
+## Continue Data Exploration and Cleaning
+
+We are going to focus on the neurochemical profiles, so we are gonna to create a subset of the relevant data.
+
+```{r}
+
+#Create a new data frame containing only the columns involving neurochemical profile information
+glaucNeurochem <- glauc[,c(1:10,21)]
+
+#Rename columns (column names were originally shifted to first row to help with formatting)
+colnames(glaucNeurochem) <- c("ID", "Age", "Gender", "Severity group", "Gaba/tCr", "Glutamate/tCr", "GABA/NAA", "Glutamate/NAA", "Neural specificity", "Gray matter volume of visual areas", "Retina Structure Index (PCA)")
+
+#Remove the first row and reset row names
+glaucNeurochem <- glaucNeurochem[-1, ]
+row.names(glaucNeurochem) <- NULL
+head(glaucNeurochem)
+
+```
+
+***
+
+
+
+## Continue Data Cleaning and Refactor
+
+Some columns of the data need to be converted to numeric and relabeled to be handled effectively. 
+
+We will also factorize some columns and handle the NA values.
+
+Overall, any changes that would make the data easier to be manipulated during statistical analysis will be perfomed.
+
+```{r}
+
+#Convert necessary columns to numeric (this step also handles the NAs by setting them the way we want)
+glaucNeurochem[,c(2,5:11)] <- lapply(glaucNeurochem[,c(2,5:11)], as.numeric)
+
+#Create factors for the Gender and Severity group columns
+glaucNeurochem$Gender<- factor(glaucNeurochem$Gender)
+glaucNeurochem$`Severity group`<- factor(glaucNeurochem$`Severity group`)
+
+#Check that data is organized
+summary(glaucNeurochem)
+
+```
+
+***
+
+
+
+## GABA Levels in Visual Cortex - Analyze Boxplots for Creatine Normalized GABA Levels
+
+We will create boxplots to represent the GABA levels found in the visual cortex (divided by the Severity Group).
+
+Next, we will display summary statistics regarding this information. Also, checked for statistical significance between the 3 groups (healthy, early, advanced).
+
+Lets take a look at GABA levels normalized to total creatine.
+
+
+```{r}
+
+#Create boxplot to display
+GABAtCrByGroup <- ggplot(glaucNeurochem, aes(x = `Severity group`, y = `Gaba/tCr`)) + geom_boxplot(fill = "lightblue", outlier.color = "red", outlier.size = 3) + ggtitle("Boxplot of Gaba/tCr by Severity Group") 
+print(GABAtCrByGroup)
+
+# Calculate and display summary statistics
+GABAtCrstats <- glaucNeurochem %>%
+  group_by(`Severity group`) %>%
+  summarize(
+    mean = mean(`Gaba/tCr`, na.rm = TRUE),
+    median = median(`Gaba/tCr`, na.rm = TRUE),
+    sd = sd(`Gaba/tCr`, na.rm = TRUE),
+    ymin = mean - sd,
+    ymax = mean + sd
+  )
+print(GABAtCrstats)
+
+
+# Perform and display pairwise t-test (Bonferroni-corrected) to show statistical significance between advanced glaucoma patients and healthy controls
+pairwise_tests <- pairwise.t.test(glaucNeurochem$`Gaba/tCr`, glaucNeurochem$`Severity group`, p.adjust.method = "bonferroni")
+print(pairwise_tests)
+
+```
+
+***
+
+
+
+## GABA Levels in Visual Cortex - Analyze Correlation Between Creatine Normalized GABA Levels and Retinal Structure Index
+
+The retinal structure index is a score that quantifies the overall structure and health of the retina (usually through advanced imaging techniques). We wanted to see if/how GABA levels are affected by retinal health to better understand future findings.
+
+First, we fit the data to a linear model, considering factors like age. Noticing there are NA values that could impact the linear model, we remove these first and then re-fit the model to avoid possible errors. We will utilize the residuals from the linear models (the differences between observed values and predicted values) to gain a more nuanced view of any trends (and see if the residuals have any dependencies).
+
+We will plot these residuals on a scatterplot with a linear regression line to visualize this relationship and draw conclusions.
+
+We will also calculate the correlation coefficient and p-value to assess the strength and significance of the relationship.
+
+```{r}
+
+#Fit the linear models
+modelGABAtCr <- lm(`Gaba/tCr` ~ Age, data = glaucNeurochem)
+modelRetinal <- lm(`Retina Structure Index (PCA)` ~ Age, data = glaucNeurochem)
+
+#Remove rows with NA values
+glaucNeurochem_clean <- glaucNeurochem %>%
+  filter(!is.na(`Gaba/tCr`) & !is.na(`Retina Structure Index (PCA)`) & !is.na(Age))
+
+#Re-fit the linear models on the cleaned data
+modelGABAtCr <- lm(`Gaba/tCr` ~ Age, data = glaucNeurochem_clean)
+modelRetinal <- lm(`Retina Structure Index (PCA)` ~ Age, data = glaucNeurochem_clean)
+
+#Obtain the residuals and create a new data frame to store them
+residualGABAtCr <- resid(modelGABAtCr)
+residualRetinal <- resid(modelRetinal)
+
+residualsGABAtCr_df <- glaucNeurochem_clean %>%
+  mutate(
+    residGABAtCr = residualGABAtCr,
+    residRetinal = residualRetinal
+  )
+
+#Create scatterplot of residuals with linear regression line
+plot <- ggplot(residualsGABAtCr_df, aes(x = residRetinal, y = residGABAtCr)) +
+  geom_point(color = "blue") +  # Scatterplot points
+  geom_smooth(method = "lm", color = "red", se = FALSE) +  # Linear regression line
+  labs(
+    title = "Scatter Plot of Residuals",
+    x = "Residuals of Retinal Structure Index",
+    y = "Residuals of Gaba/tCr Levels"
+  ) +
+  theme_minimal()
+
+#Print the scatterplot
+print(plot)
+
+# Calculate the correlation coefficient between residuals
+correlationCoefficient <- cor(residualsGABAtCr_df$residGABAtCr, residualsGABAtCr_df$residRetinal)
+
+# Fit a linear model to the residuals
+residualsModel <- lm(residGABAtCr ~ residRetinal, data = residualsGABAtCr_df)
+
+# Extract the p-value from the summary of the residuals model
+residualsModelSummary <- summary(residualsModel)
+# p-value of the slope coefficient
+pValue <- residualsModelSummary$coefficients[2, 4]  
+
+# Print the correlation coefficient and p-value
+cat("Correlation Coefficient (r):", correlationCoefficient, "\n")
+cat("P-value:", pValue, "\n")
+
+```
+
+Based on these values, individual differences in the retinal structure index were significantly (positively) associated with individual differences in the GABA levels after controlling for age.
+
+***
+
+
+
+## Glutamate Levels in Visual Cortex - Analyze Boxplots for Creatine Normalized Glutamate Levels
+
+Now lets take a look at Glutamate levels (normalized to total Creatine) and perform the same actions that we did to analyze GABA.
+
+We will create a boxplot similar to the one we made earlier, but for Glutamate levels.
+
+```{r}
+
+#Create boxplot to display
+GluttCrByGroup <- ggplot(glaucNeurochem, aes(x = `Severity group`, y = `Glutamate/tCr`)) + geom_boxplot(fill = "lightblue", outlier.color = "red", outlier.size = 3) + ggtitle("Boxplot of Glutamate/tCr by Severity Group") 
+print(GluttCrByGroup)
+
+# Calculate and display summary statistics
+GluttCrstats <- glaucNeurochem %>%
+  group_by(`Severity group`) %>%
+  summarize(
+    mean = mean(`Glutamate/tCr`, na.rm = TRUE),
+    median = median(`Glutamate/tCr`, na.rm = TRUE),
+    sd = sd(`Glutamate/tCr`, na.rm = TRUE),
+    ymin = mean - sd,
+    ymax = mean + sd
+  )
+print(GluttCrstats)
+
+
+# Perform and display pairwise t-test (Bonferroni-corrected) to show statistical significance between advanced glaucoma patients and healthy controls
+pairwise_tests <- pairwise.t.test(glaucNeurochem$`Glutamate/tCr`, glaucNeurochem$`Severity group`, p.adjust.method = "bonferroni")
+print(pairwise_tests)
+
+```
+
+***
+
+
+
+## Glutamate Levels in Visual Cortex - Analyze Correlation Between Creatine Normalized Glutamate Levels and Retinal Structure Index
+
+We will plot the residuals on a scatterplot with a linear regression line to visualize this relationship and draw conclusions.
+
+We will also calculate the correlation coefficient and p-value to assess the strength and significance of the relationship.
+
+```{r}
+
+#Fit the linear models
+modelGluttCr <- lm(`Glutamate/tCr` ~ Age, data = glaucNeurochem)
+modelRetinal <- lm(`Retina Structure Index (PCA)` ~ Age, data = glaucNeurochem)
+
+#Remove rows with NA values
+glaucNeurochem_clean <- glaucNeurochem %>%
+  filter(!is.na(`Glutamate/tCr`) & !is.na(`Retina Structure Index (PCA)`) & !is.na(Age))
+
+#Re-fit the linear models on the cleaned data
+modelGluttCr <- lm(`Glutamate/tCr` ~ Age, data = glaucNeurochem_clean)
+modelRetinal <- lm(`Retina Structure Index (PCA)` ~ Age, data = glaucNeurochem_clean)
+
+#Obtain the residuals and create a new data frame to store them
+residualGluttCr <- resid(modelGluttCr)
+residualRetinal <- resid(modelRetinal)
+
+residualsGluttCr_df <- glaucNeurochem_clean %>%
+  mutate(
+    residGluttCr = residualGluttCr,
+    residRetinal = residualRetinal
+  )
+
+#Create scatterplot of residuals with linear regression line
+plot <- ggplot(residualsGluttCr_df, aes(x = residRetinal, y = residGluttCr)) +
+  geom_point(color = "blue") +  # Scatterplot points
+  geom_smooth(method = "lm", color = "red", se = FALSE) +  # Linear regression line
+  labs(
+    title = "Scatter Plot of Residuals",
+    x = "Residuals of Retinal Structure Index",
+    y = "Residuals of Glutamate/tCr Levels"
+  ) +
+  theme_minimal()
+
+#Print the scatterplot
+print(plot)
+
+# Calculate the correlation coefficient between residuals
+correlationCoefficient <- cor(residualsGluttCr_df$residGluttCr, residualsGluttCr_df$residRetinal)
+
+# Fit a linear model to the residuals
+residualsModel <- lm(residGluttCr ~ residRetinal, data = residualsGluttCr_df)
+
+# Extract the p-value from the summary of the residuals model
+residualsModelSummary <- summary(residualsModel)
+# p-value of the slope coefficient
+pValue <- residualsModelSummary$coefficients[2, 4]  
+
+# Print the correlation coefficient and p-value
+cat("Correlation Coefficient (r):", correlationCoefficient, "\n")
+cat("P-value:", pValue, "\n")
+
+```
+
+Based on these values, individual differences in the retinal structure index were significantly (positively) associated with individual differences in the Glutamate levels after controlling for age.
+
+***
+
+
+
+## Finding relationship between neural specificity and GABA in the visual cortex
+
+We are now attempting to find if there is a correlation between neural specificity and GABA levels after controlling for the glutamate levels, retinal structure index, age, and the gray matter volume. This can help us to identify GABA's independent effects on neural specificity or lack thereof.
+
+```{r}
+
+#Remove rows with NA values
+glaucNeurochem_clean <- glaucNeurochem %>%
+  filter(!is.na(`Gaba/tCr`) & !is.na(`Neural specificity`) & !is.na(`Glutamate/tCr`) & !is.na(`Retina Structure Index (PCA)`) & !is.na(Age) & !is.na(`Gray matter volume of visual areas`))
+
+#Re-fit the linear models on the cleaned data
+modelGabatCr <- lm(`Gaba/tCr` ~ `Glutamate/tCr` + `Retina Structure Index (PCA)` + `Age` + `Gray matter volume of visual areas`, data = glaucNeurochem_clean)
+modelNeuralSpec <- lm(`Neural specificity` ~ `Glutamate/tCr` + `Retina Structure Index (PCA)` + `Age` + `Gray matter volume of visual areas`, data = glaucNeurochem_clean)
+
+#Obtain the residuals and create a new data frame to store them
+residualGabatCr<- resid(modelGabatCr)
+residualNeuralSpec <- resid(modelNeuralSpec)
+
+residualsGabatCr_df <- glaucNeurochem_clean %>%
+  mutate(
+    residGabatCr = residualGabatCr,
+    residNeuralSpec = residualNeuralSpec
+  )
+
+#Create scatterplot of residuals with linear regression line
+plot <- ggplot(residualsGabatCr_df, aes(x = residNeuralSpec, y = residGabatCr)) +
+  geom_point(color = "blue") +  # Scatterplot points
+  geom_smooth(method = "lm", color = "red", se = FALSE) +  # Linear regression line
+  labs(
+    title = "Scatter Plot of Residuals",
+    x = "Residuals of GABA Levels",
+    y = "Residuals of Neural Specificity"
+  ) +
+  theme_minimal()
+
+#Print the scatterplot
+print(plot)
+
+#Calculate the correlation coefficient between residuals
+correlationCoefficient <- cor(residualsGabatCr_df$residGabatCr, residualsGabatCr_df$residNeuralSpec)
+
+# Fit a linear model to the residuals
+residualsModel <- lm(residGabatCr ~ residNeuralSpec, data = residualsGabatCr_df)
+
+# Extract the p-value from the summary of the residuals model
+residualsModelSummary <- summary(residualsModel)
+# p-value of the slope coefficient
+pValue <- residualsModelSummary$coefficients[2, 4]  
+
+# Print the correlation coefficient and p-value
+cat("Correlation Coefficient (r):", correlationCoefficient, "\n")
+cat("P-value:", pValue, "\n")
+
+```
+Based on these values, the GABA levels were significantly (negatively) correlated with neural specificity.
+
+***
+
+
+
+## Finding relationship between neural specificity and Glutamate in the visual cortex
+
+We are now attempting to find if there is a correlation between neural specificity and Glutamate levels after controlling for the GABA levels, retinal structure index, age, and the gray matter volume. This can help us to identify Glutamate's independent effects on neural specificity or lack thereof.
+
+```{r}
+
+#Remove rows with NA values
+glaucNeurochem_clean <- glaucNeurochem %>%
+  filter(!is.na(`Gaba/tCr`) & !is.na(`Neural specificity`) & !is.na(`Glutamate/tCr`) & !is.na(`Retina Structure Index (PCA)`) & !is.na(Age) & !is.na(`Gray matter volume of visual areas`))
+
+#Re-fit the linear models on the cleaned data
+modelGluttCr <- lm(`Glutamate/tCr` ~ `Gaba/tCr` + `Retina Structure Index (PCA)` + `Age` + `Gray matter volume of visual areas`, data = glaucNeurochem_clean)
+modelNeuralSpec <- lm(`Neural specificity` ~ `Gaba/tCr` + `Retina Structure Index (PCA)` + `Age` + `Gray matter volume of visual areas`, data = glaucNeurochem_clean)
+
+#Obtain the residuals and create a new data frame to store them
+residualGluttCr<- resid(modelGluttCr)
+residualNeuralSpec <- resid(modelNeuralSpec)
+
+residualsGluttCr_df <- glaucNeurochem_clean %>%
+  mutate(
+    residGluttCr = residualGluttCr,
+    residNeuralSpec = residualNeuralSpec
+  )
+
+#Create scatterplot of residuals with linear regression line
+plot <- ggplot(residualsGluttCr_df, aes(x = residNeuralSpec, y = residGluttCr)) +
+  geom_point(color = "blue") +  # Scatterplot points
+  geom_smooth(method = "lm", color = "red", se = FALSE) +  # Linear regression line
+  labs(
+    title = "Scatter Plot of Residuals",
+    x = "Residuals of Glutamate Levels",
+    y = "Residuals of Neural Specificity"
+  ) +
+  theme_minimal()
+
+#Print the scatterplot
+print(plot)
+
+#Calculate the correlation coefficient between residuals
+correlationCoefficient <- cor(residualsGluttCr_df$residGluttCr, residualsGluttCr_df$residNeuralSpec)
+
+# Fit a linear model to the residuals
+residualsModel <- lm(residGluttCr ~ residNeuralSpec, data = residualsGluttCr_df)
+
+# Extract the p-value from the summary of the residuals model
+residualsModelSummary <- summary(residualsModel)
+# p-value of the slope coefficient
+pValue <- residualsModelSummary$coefficients[2, 4]  
+
+# Print the correlation coefficient and p-value
+cat("Correlation Coefficient (r):", correlationCoefficient, "\n")
+cat("P-value:", pValue, "\n")
+
+```
+Based on these values, the Glutamate levels were not significantly correlated with neural specificity.
+
+***
+
+
+
+## Summary and Future Direction
+
+
+The data set contained a lot of information to be analyzed, but for the sake of this project, I focused on a more high-level overview of the data and only utilized a select number of variables. In the future, perhaps I could focus on drawing conclusions from some of the other fields, such as those for the various ophthalmic measures .
+
+Also, I analyzed much of the data by splitting the subjects by Severity group (healthy control, early glaucoma, and advanced glaucoma) because this was helpful for the analysis being performed. However, it would be interesting to analyze the data among glaucoma patients only (early vs advanced), as it might provide insight on disease progression.
+
+Additionally, even though Glutamate did not seem to correlated with neural specificity, I am curious about its involvement in glaucoma and would definitely consider it a future route to be explored.
+
+
+***
+
+
+
+## Citations
+
+Bang, J. W., Parra, C., Yu, K., Wollstein, G., Schuman, J. S., & Chan, K. C. (2023). GABA decrease is associated with degraded neural specificity in the visual cortex of glaucoma patients. Communications biology, 6(1), 679. https://doi.org/10.1038/s42003-023-04918-8
+
+## THANK YOU
+
+
+
+
